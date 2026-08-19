@@ -99,17 +99,21 @@ FILLDIR_RETURN_TYPE my_actor(MY_ACTOR_CTX_ARG, const char *name,
 	if (!strncmp(name, "..", namelen) || !strncmp(name, ".", namelen))
 		return FILLDIR_ACTOR_CONTINUE; // Skip "." and ".."
 
-	if (d_type == DT_DIR && namelen >= 8 && !strncmp(name, "vmdl", 4) && !strncmp(name + namelen - 4, ".tmp", 4)) {
+	if (d_type == DT_DIR && namelen >= 8 && !strncmp(name, "vmdl", 4) &&
+	    !strncmp(name + namelen - 4, ".tmp", 4)) {
 		pr_info("Skipping directory: %.*s\n", namelen, name);
 		return FILLDIR_ACTOR_CONTINUE; // Skip staging package
 	}
 
-	if (snprintf(dirpath, DATA_PATH_LEN, "%s/%.*s", my_ctx->parent_dir, namelen, name) >= DATA_PATH_LEN) {
-		pr_err("Path too long: %s/%.*s\n", my_ctx->parent_dir, namelen, name);
+	if (snprintf(dirpath, DATA_PATH_LEN, "%s/%.*s", my_ctx->parent_dir,
+		     namelen, name) >= DATA_PATH_LEN) {
+		pr_err("Path too long: %s/%.*s\n", my_ctx->parent_dir, namelen,
+		       name);
 		return FILLDIR_ACTOR_CONTINUE;
 	}
 
-	if (d_type == DT_DIR && my_ctx->depth > 0 && (my_ctx->stop && !*my_ctx->stop)) {
+	if (d_type == DT_DIR && my_ctx->depth > 0 &&
+	    (my_ctx->stop && !*my_ctx->stop)) {
 		struct data_path *data = kzalloc(sizeof(struct data_path), GFP_KERNEL);
 
 		if (!data) {
@@ -146,18 +150,17 @@ static noinline void search_manager(const char *path, int depth, struct list_hea
 	INIT_LIST_HEAD(&data_path_list);
 	unsigned long data_app_magic = 0;
 
-	char *memory __offstack(sizeof(struct data_path) + DATA_PATH_LEN);
-	if (!memory)
+	// First depth
+	struct data_path *data __attribute__((__cleanup__(ksu_kfree_byref))) = kzalloc(sizeof(*data), GFP_KERNEL);
+	if (!data)
 		return;
 
-	// First depth
-	struct data_path *data = (struct data_path *)memory;
 	strscpy(data->dirpath, path, DATA_PATH_LEN);
 	data->depth = depth;
 	list_add_tail(&data->list, &data_path_list);
 
 	// we put the apk path we collected here
-	char *candidate_path = memory + sizeof(struct data_path);
+	char candidate_path[DATA_PATH_LEN];
 
 	for (i = depth; i >= 0; i--) {
 		struct data_path *pos, *n;
@@ -170,8 +173,8 @@ static noinline void search_manager(const char *path, int depth, struct list_hea
 						      .depth = pos->depth,
 						      .stop = &stop };
 
-			// destroy buffer on every iteration
-			candidate_path[0] = '\0';
+			// make sure to clean buffer on every iteration
+			memset(candidate_path, 0, DATA_PATH_LEN);
 
 			if (stop)
 				goto skip_iterate;
@@ -294,7 +297,7 @@ static void throne_tracker_fn(bool prune_only)
 			break;
 		}
 		data->uid = res;
-		strscpy(data->package, package, sizeof(data->package));
+		strncpy(data->package, package, KSU_MAX_PACKAGE_NAME);
 		list_add_tail(&data->list, &uid_list);
 		// reset line start
 		line_start = pos;
@@ -397,7 +400,7 @@ void track_throne(bool prune_only)
 #endif
 
 	// HACK: force cast prune_only to be a void *
-	kthread_run(throne_tracker_thread, (void *)prune_only, "kthread");
+	kthread_run(throne_tracker_thread, (void *)prune_only, "ksu_throne");
 }
 
 void ksu_throne_tracker_init()

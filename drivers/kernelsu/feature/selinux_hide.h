@@ -1,16 +1,3 @@
-// SPDX-License-Identifier: GPL-2.0-only
-/*
- * Copyright (C) 2026 \xx
- *
- * This file is a downstream extension and NOT affiliated, endorsed by,
- * or maintained by the official KernelSU developers.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- */
-
 #ifndef __KSU_H_SELINUX_HIDE
 #define __KSU_H_SELINUX_HIDE
 
@@ -19,6 +6,7 @@ void ksu_selinux_hide_exit();
 
 static int sepol_expected_argc(u32 cmd);
 
+#if 1
 // its all push, no pop, so we can realloc forever
 
 // types
@@ -83,10 +71,6 @@ static void ksu_add_shit_to_list(u32 cmd, const char *args[])
 
 
 	} else if (argc >= 2) {
-
-		if (!args[1])
-			goto out_unlock;
-
 		const char *src = args[0];
 		const char *tgt = args[1];
 
@@ -141,55 +125,8 @@ out_unlock:
 	mutex_unlock(&selinux_hide_list_mutex);
 }
 
-static bool ksu_should_destroy_context(char *str)
-{
-	if (!str)
-		return false;
+#else 
 
-	bool status = false;
-
-	mutex_lock(&selinux_hide_list_mutex);
-
-	size_t offset = 0;
-	while (offset < ksu_hide_type_len) {
-		const char *current_entry = ksu_hide_type_list + offset;
-		
-		if (strstr(str, current_entry)) {
-			status = true;
-			goto out_unlock;
-		}
-
-		offset = offset + strlen(current_entry) + 1;
-	}
-
-	// double strstr
-	char *str2 = strchr(str, ' ');
-	if (!str2)
-		goto out_unlock;
-
-	offset = 0;
-	while (offset < ksu_hide_rule_len) {
-		const char *src_rule = ksu_hide_rule_list + offset;
-		size_t src_sz = strlen(src_rule) + 1;
-			
-		const char *tgt_rule = src_rule + src_sz;
-		size_t tgt_sz = strlen(tgt_rule) + 1;
-
-		if (strstr(str, src_rule) && strstr(str2, tgt_rule)) {
-			status = true;
-			goto out_unlock;
-		}
-
-		offset = offset + src_sz + tgt_sz;
-	}
-
-out_unlock:
-	mutex_unlock(&selinux_hide_list_mutex);
-	return status;
-
-}
-
-#if 0
 // /selinux/rules.c, linked list
 LIST_HEAD(ksu_hide_type_list);
 LIST_HEAD(ksu_hide_rule_list);
@@ -251,10 +188,6 @@ static void ksu_add_shit_to_list(u32 cmd, const char *args[])
 			pr_info("selinux_hide: tracking type: %s \n", t_node->padded_name);
 
 	} else if (argc >= 2) {
-
-		if (!args[1])
-			goto out_unlock;
-
 		const char *src = args[0];
 		const char *tgt = args[1];
 
@@ -297,40 +230,7 @@ static void ksu_add_shit_to_list(u32 cmd, const char *args[])
 out_unlock:
 	up_write(&ksu_sepolicy_shitlist_lock);
 }
-
-static bool ksu_should_destroy_context(char *str)
-{
-	if (!str)
-		return false;
-
-	down_read(&ksu_sepolicy_shitlist_lock);
-
-	struct ksu_type_node *t_node;
-	list_for_each_entry(t_node, &ksu_hide_type_list, list) {
-		if (strstr(str, t_node->padded_name)) {
-			up_read(&ksu_sepolicy_shitlist_lock);
-			return true;
-		}
-	}
-
-	// double strstr
-	char *str2 = strchr(str, ' ');
-	if (!str2) {
-		up_read(&ksu_sepolicy_shitlist_lock);
-		return false;
-	}		
-
-	struct ksu_rule_node *r_node;
-	list_for_each_entry(r_node, &ksu_hide_rule_list, list) {
-		if (strstr(str, r_node->src) && strstr(str2, r_node->tgt)) {
-			up_read(&ksu_sepolicy_shitlist_lock);
-			return true;
-		}
-	}
-
-	up_read(&ksu_sepolicy_shitlist_lock);
-	return false;
-}
 #endif
+
 
 #endif

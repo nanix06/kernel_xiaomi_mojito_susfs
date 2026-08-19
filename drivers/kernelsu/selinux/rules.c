@@ -107,13 +107,6 @@ static int apply_kernelsu_rules_fn(void *ptr)
 	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "open");
 	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "fifo_file", "getattr");
 
-	// use memfd created by su domain
-	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "execute");
-	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "getattr");
-	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "map");
-	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "read");
-	ksu_allow(db, "domain", KERNEL_SU_DOMAIN, "memfd_file", "write");
-
 	// bootctl
 	ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "dir", "search");
 	ksu_allow(db, "hwservicemanager", KERNEL_SU_DOMAIN, "file", "read");
@@ -199,6 +192,14 @@ do_stop_machine:
 out_flush:
 	smp_mb();
 	reset_avc_cache();
+#ifdef CONFIG_KSU_SUSFS
+    // Allow umount in zygote process without installing zygisk
+    //ksu_allow(db, "zygote", "labeledfs", "filesystem", "unmount");
+    susfs_set_priv_app_sid();
+    susfs_set_init_sid();
+    susfs_set_ksu_sid();
+    susfs_set_zygote_sid();
+#endif // #ifdef CONFIG_KSU_SUSFS
 #endif
 }
 
@@ -628,6 +629,7 @@ static int handle_sepolicy_fn(void *data)
 			pr_info("sepol: cmd #%u success, cmd=%u subcmd=%u.\n", cmd_index, header.cmd, header.subcmd);
 			success_cmd_count++;
 			ksu_add_shit_to_list(header.cmd, args);
+
 		}
 
 		cmd_index++;

@@ -11,8 +11,8 @@ MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 $(info -- KDIR: $(KDIR))
 $(info -- MDIR: $(MDIR))
 
-# compliant to last upstream kernel change as of aab6797
-CFLAGS_ksu.o += -DKSU_VERSION=32582
+# compliant to last upstream kernel change as of 96a72dd
+CFLAGS_ksu.o += -DKSU_VERSION=32500
 
 ifndef KSU_EXPECTED_SIZE
 KSU_EXPECTED_SIZE := 0x033b
@@ -45,11 +45,6 @@ $(info -- KernelSU/compat: security_hook_list - hlist_node found!)
 CFLAGS_ksu.o += -DKSU_COMPAT_SECURITY_DELETE_HOOKS_HLIST
 endif
 
-ifeq ($(shell grep -q "^struct security_operations selinux_ops" $(srctree)/security/selinux/hooks.c; echo $$?),0)
-$(info -- KernelSU/compat: exported selinux_ops found!)
-CFLAGS_ksu.o += -DKSU_HAS_EXPORTED_SELINUX_OPS
-endif
-
 ifeq ($(shell grep -q " current_sid(void)" $(srctree)/security/selinux/include/objsec.h; echo $$?),0)
 CFLAGS_ksu.o += -DKSU_COMPAT_HAS_CURRENT_SID
 endif
@@ -77,9 +72,9 @@ $(info -- KernelSU/compat: backported cpus_ptr found!)
 CFLAGS_ksu.o += -DKSU_COMPAT_HAS_BACKPORTED_CPUS_PTR
 endif
 
-# branch link hook, do_faccessat
-ifeq ($(shell grep "long do_faccessat" $(srctree)/fs/open.c 2>/dev/null | grep -q "flags" 2>/dev/null; echo $$?),0)
-CFLAGS_ksu.o += -DKSU_HAS_FACCESSAT2
+ifeq ($(shell grep -q "^struct security_operations selinux_ops" $(srctree)/security/selinux/hooks.c; echo $$?),0)
+$(info -- KernelSU/compat: exported selinux_ops found!)
+CFLAGS_ksu.o += -DKSU_HAS_EXPORTED_SELINUX_OPS
 endif
 
 # UL, look for read_iter on f_op struct
@@ -94,20 +89,10 @@ $(info -- KernelSU/compat: iterate_dir found!)
 CFLAGS_ksu.o += -DKSU_HAS_ITERATE_DIR
 endif
 
-CFLAGS_ksu.o += $(call cc-option, -Wno-declaration-after-statement)
-CFLAGS_ksu.o += $(call cc-option, -Wno-implicit-function-declaration)
-CFLAGS_ksu.o += $(call cc-option, -Wno-missing-prototypes)
-CFLAGS_ksu.o += $(call cc-option, -Wno-strict-prototypes)
-CFLAGS_ksu.o += $(call cc-option, -Wno-int-conversion)
-CFLAGS_ksu.o += $(call cc-option, -Wno-int-to-pointer-cast)
-CFLAGS_ksu.o += $(call cc-option, -Wno-pointer-to-int-cast)
-CFLAGS_ksu.o += $(call cc-option, -Wno-unused-variable)
-CFLAGS_ksu.o += $(call cc-option, -Wno-unused-function)
-CFLAGS_ksu.o += $(call cc-option, -Wno-unused-label)
-CFLAGS_ksu.o += $(call cc-option, -Wno-format)
-CFLAGS_ksu.o += $(call cc-option, -Wno-macro-redefined)
-CFLAGS_ksu.o += $(call cc-option, -Wno-incompatible-pointer-types-discards-qualifiers)
-CFLAGS_ksu.o += $(call cc-option, -Wno-discarded-qualifiers)
+CFLAGS_ksu.o += -Wno-implicit-function-declaration -Wno-strict-prototypes -Wno-declaration-after-statement 
+CFLAGS_ksu.o += -Wno-int-conversion -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast
+CFLAGS_ksu.o += -Wno-unused-variable -Wno-unused-function -Wno-format
+CFLAGS_ksu.o += -Wno-macro-redefined
 
 # dont be too strict
 CFLAGS_REMOVE_ksu.o += -Werror
@@ -118,22 +103,10 @@ CFLAGS_ksu.o += $(call cc-option, -Wframe-larger-than=1024)
 # to make sure we can use builtins
 CFLAGS_REMOVE_ksu.o += -fno-builtin
 
-# a little respect to kbuild
-ifeq ($(CONFIG_CC_OPTIMIZE_FOR_SIZE),y)
-CFLAGS_REMOVE_ksu.o += -Oz
-CFLAGS_REMOVE_ksu.o += -Os
-CFLAGS_ksu.o += -O2
-else
-CFLAGS_ksu.o += -O3
-endif
-
 ifneq ($(CONFIG_KSU_DEBUG),y)
 # strip, remove tracing / profiling
 # comment out if proper backtrace is needed
 CFLAGS_ksu.o += -g0 -fno-unwind-tables -fno-asynchronous-unwind-tables -fomit-frame-pointer
-CFLAGS_ksu.o += $(call cc-option, -momit-leaf-frame-pointer)
-
-# no profiling
 CFLAGS_REMOVE_ksu.o = $(CC_FLAGS_FTRACE)
 CFLAGS_REMOVE_ksu.o += -pg
 
@@ -142,10 +115,14 @@ CFLAGS_ksu.o += -fno-stack-protector -fno-stack-check
 CFLAGS_REMOVE_ksu.o += -fsanitize=shadow-call-stack
 endif # CONFIG_KSU_DEBUG
 
-# Native fallback targets matching the traditional out-of-tree build method
-all:
-	$(MAKE) -C $(KDIR) M=$(MDIR) modules
-clean:
-	$(MAKE) -C $(KDIR) M=$(MDIR) clean
+## For susfs stuff ##
+ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
+$(info )
+$(info -- SUSFS_VERSION: $(SUSFS_VERSION))
+else
+$(info -- You have not integrated susfs in your kernel yet.)
+$(info -- Read: https://gitlab.com/simonpunk/susfs4ksu)
+endif
 
 # Keep a new line here!! Because someone may append config
